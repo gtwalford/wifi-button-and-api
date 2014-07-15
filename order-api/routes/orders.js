@@ -8,8 +8,8 @@ var express = require('express');
 var app = express();
 var router  = express.Router();
 var bodyParser = require('body-parser');
-var inspect = require('util').inspect;
 var Busboy = require('busboy');
+var _ = require('lodash');
 var mongoose = require('mongoose');
 var Order = require('./../models/order');
 
@@ -26,7 +26,19 @@ router.route('/')
       }
 
       res.json( order );
-      });
+    });
+  });
+
+// Retrieve all in progress orders : /vi/orders/open
+router.route('/open')
+  .get( function( req, res ){
+    Order.find( { completed: false }, function( err, order ){
+      if( err ){
+        res.send( err );
+      }
+
+      res.json( order );
+    });
   });
 
 // Retrieve single Order : /v1/orders/orderId
@@ -72,8 +84,8 @@ router.route('/new')
           if( err )
             res.send( err )
 
-          res.json(order);
-        })
+          res.json(order._id);
+        });
       }
       else {
         res.json({ message: "Nothing Created. Not enough data." });
@@ -91,7 +103,18 @@ router.route('/confirm/:orderId')
         res.send( err );
       }
 
-      res.json( order );
+      order.orderConfirmed = true;
+
+      order.save( function( err ){
+        if( err ){
+          res.send( err );
+        }
+
+        res.json({ message: "confirmed" });
+      });
+
+      initiateOrder( req.params.orderId, order.status );
+
     });
   });
 
@@ -103,9 +126,38 @@ router.route('/status/:orderId')
         res.send( err );
       }
 
-      res.json( order );
+      res.json( order.status );
     });
   });
 
+// Initiate the order process incrementing Status for test purposes
+function initiateOrder( orderId, status ){
+  // For test purposes wait 60 seconds to update status
+  setTimeout( function(){
+    // Increment Status
+    status ++;
+
+    // Find Order to update
+    Order.findById( orderId, function( err, order ){
+      if ( err ){
+        console.log( err );
+      }
+
+      // If Status is less than 6 update status, save, and repeat function
+      // If status is 6 or greater complete order and save
+      if( status < 6 ){
+        order.status = status;
+        order.save();
+
+        initiateOrder( orderId, status );
+      }
+      else {
+        order.status = status;
+        order.completed = true;
+        order.save();
+      }
+    });
+  }, 60000 );
+}
 
 module.exports = router;
