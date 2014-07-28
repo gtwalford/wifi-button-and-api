@@ -29,7 +29,7 @@ router.route('/')
     });
   });
 
-// Retrieve all in progress orders : /vi/orders/open
+// Retrieve all in progress orders : /v1/orders/open
 router.route('/open')
   .get( function( req, res ){
     Order.find( { completed: false }, function( err, order ){
@@ -37,11 +37,25 @@ router.route('/open')
         res.send( err );
       }
 
-      res.json( order );
+      res.render( 'orderWatch', { orders: order } );
     });
   });
 
-// Retrieve single Order : /v1/orders/orderId
+// Clear all orders that have not been completed : /v1/orders/clear
+router.route('/clear')
+  .delete( function( req, res ){
+    Order.remove( { completed: false }, function( err, order ){
+      if( err ){
+        res.send( err );
+      }
+
+      res.json({ message: "Removed orders that have not been confirmed" });
+    });
+  });
+
+// Single Order : /v1/orders/orderId
+// Get to retrieve
+// Delete to remove
 router.route('/:orderId')
   .get( function( req, res ){
     Order.findById( req.params.orderId, function( err, order ){
@@ -61,38 +75,44 @@ router.route('/:orderId')
     });
   });
 
-// Create New Device : /v1/orders/new
+// To create a new order posting content from header : /v1/orders/new
 router.route('/new')
-  .post( function( req, res, next ){
+  .post( function( req, res ){
 
-    var busboy = new Busboy({ headers: req.headers });
+    var order = new Order();
+    order.deviceName = req.body.deviceName;
+    order.orderConfirmed = false;
+    order.status = 0;
+    order.completed = false;
+    if( order.deviceName !== undefined ){
+      order.save( function( err ){
+        if( err )
+          res.send( err )
 
-    busboy.on('field', function(fieldname, val, fieldnameTruncated, valTruncated) {
-      req.body[fieldname] = val;
-    });
+        res.json( '{'+ order._id.toString() +'}' );
+      });
+    }
+  })
 
-    busboy.on('finish', function() {
-      var order = new Order();
+// Create new order posting content through the url : /v1/orders/new/deviceName
+router.route('/new/:deviceName')
+  .post( function( req, res ){
 
-      order.deviceName = req.body.deviceName;
-      order.orderConfirmed = false;
-      order.status = 0;
-      order.completed = false;
+    var order = new Order();
+    order.deviceName = req.params.deviceName;
+    order.orderConfirmed = false;
+    order.status = 0;
+    order.completed = false;
+    if( order.deviceName !== undefined ){
+      order.save( function( err ){
+        if( err )
+          res.send( err )
 
-      if( order.deviceName !== undefined ){
-        order.save( function( err ){
-          if( err )
-            res.send( err )
-
-          res.json(order._id);
-        });
-      }
-      else {
-        res.json({ message: "Nothing Created. Not enough data." });
-      }
-    });
-    req.pipe(busboy);
-
+        console.log('New Order Created');
+        console.log('Confirmation number = ' + order._id);
+        res.json( '{'+ order._id.toString() +'}' );
+      });
+    }
   });
 
 // Confirm Order : /v1/orders/confirm/orderId
@@ -104,13 +124,14 @@ router.route('/confirm/:orderId')
       }
 
       order.orderConfirmed = true;
+      order.status++;
 
       order.save( function( err ){
         if( err ){
           res.send( err );
         }
 
-        res.json({ message: "confirmed" });
+        res.json( "{confirmed}" );
       });
 
       initiateOrder( req.params.orderId, order.status );
@@ -126,7 +147,7 @@ router.route('/status/:orderId')
         res.send( err );
       }
 
-      res.json( order.status );
+      res.json( '{'+order.status.toString()+'}' );
     });
   });
 
@@ -157,7 +178,7 @@ function initiateOrder( orderId, status ){
         order.save();
       }
     });
-  }, 60000 );
+  }, 10000 );
 }
 
 module.exports = router;
