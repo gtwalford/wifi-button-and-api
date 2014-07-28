@@ -24,15 +24,24 @@
 Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ, ADAFRUIT_CC3000_VBAT,
                                          SPI_CLOCK_DIVIDER);
 
-#define WLAN_SSID        "WIFI_NETWORK"           // cannot be longer than 32 characters!
-#define WLAN_PASS        "WIFI_PASSWORD"
+#define WLAN_SSID        "CPB-BDR-Guest"           // cannot be longer than 32 characters!
+#define WLAN_PASS        "BDRCO6450"
+/*#define WLAN_SSID        "arduinoLine"           // cannot be longer than 32 characters!*/
+/*#define WLAN_PASS        "testtest"*/
 // Security can be WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA or WLAN_SEC_WPA2
 #define WLAN_SECURITY    WLAN_SEC_WPA2
 // Amount of time to wait with no data received before closing the connection
-#define IDLE_TIMEOUT_MS  3000      
+#define IDLE_TIMEOUT_MS  1000
 // Define the HOST and PAGE location
-#define HOST             "HOST_WEBSITE"
-#define WEBPAGE          "PAGE_LOCATION"
+#define HOST             "104.131.136.115"
+#define NEWORDER         "/v1/orders/new"
+#define CONFIRM          "/v1/orders/confirm/"
+#define STATUS           "/v1/orders/status/"
+// Device Information
+#define deviceName       "Pizza%20Button"
+char confNum[32];
+char response[32];
+
 // Store HOST IP Address
 uint32_t ip;
 
@@ -43,15 +52,15 @@ boolean buttonEngaged = true; // To prevent click events from occurring continua
 
 // Lights
 const int orderInitLight = A1; // Yellow light for when order is initiated
-const int confLight = A2; // Blue light to signal order placed
-const int errorLight = A3; // Red to notify Error
+const int confLight = A3; // Blue light to signal order placed
+const int errorLight = A4; // Red to notify Error
 
 // Red lights for Order Status
 const int state1 = 3;
 const int state2 = 4; 
 const int state3 = 5;
 const int state4 = 6;
-const int state5 = 9;
+const int state5 = 8;
 
 // Setup for flashing lights
 int ledState = LOW;
@@ -124,10 +133,10 @@ void loop(){
     // Check Wifi and establish new connection if not connected
     if( cc3000.checkConnected() == 0 ){
       wifiConnect();
-      httpRequest();
+      newOrder();
     }
     else {
-      httpRequest();
+      newOrder();
     }
   }
 
@@ -186,12 +195,16 @@ void wifiConnect(){
 }
 
 /*
- * httpRequest()
+ * newOrder()
  *
  * Make Http request and print returned page
  */
-void httpRequest(){
+void newOrder(){
+  bool startRead = false;
+  int stringPos = 0;
+  memset( &confNum, 0, 32 );
 
+  Serial.println("Make new order");
   // Signal that HTTP Request is being made
   digitalWrite(orderInitLight, HIGH);
   // Clear anything stored in ip
@@ -208,21 +221,34 @@ void httpRequest(){
     delay(500);
   }
 
+  /*ip = 1753450611;*/
   // Print HOST IP Address
-  cc3000.printIPdotsRev(ip);
+  /*cc3000.printIPdotsRev(ip);*/
+  Serial.println(ip);
+
+  /*char dataLength[] = strlen(deviceData);*/
+  /*char deviceLength[] = strlen(deviceData);*/
+  /*int i = 0;*/
+  /*while( deviceData[i] ){*/
+    /*i++;*/
+  /*}*/
+  /*char dataLength[4] = { i };*/
 
   // Perform HTTP Request
-  Adafruit_CC3000_Client www = cc3000.connectTCP(ip, 80);
+  Adafruit_CC3000_Client www = cc3000.connectTCP(ip, 3000);
   if (www.connected()) {
-    www.fastrprint(F("GET "));
-    www.fastrprint(WEBPAGE);
-    www.fastrprint(F(" HTTP/1.1\r\n"));
-    www.fastrprint(F("Host: ")); www.fastrprint(HOST); www.fastrprint(F("\r\n"));
+    www.fastrprint(F("POST /v1/orders/new/Dominos%20Button HTTP/1.1\r\n"));
+    www.fastrprint(F("Host: 104.131.136.115.com:3000\r\n"));
     www.fastrprint(F("User-Agent: ArduinoWiFi/1.1\r\n"));
     // Authorization Required in the request if behind firewall
     // Username and password passed through with base64 encrytion for HTTP
     // www.fastrprint(F("Authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQ=\r\n"));
-    www.fastrprint(F("\r\n"));
+    /*www.fastrprint(F("Content-Type: application/x-www-form-urlencoded\r\n"));*/
+    /*www.fastrprint(F("Content-Length: "));*/
+    /*www.fastrprint( dataLength );*/
+    /*www.fastrprint(F("\r\n"));*/
+    /*www.fastrprint(deviceData);*/
+    /*www.fastrprint(F("\r\n"));*/
     www.println();
   } else {
     Serial.println(F("Connection failed"));    
@@ -230,23 +256,39 @@ void httpRequest(){
     return;
   }
 
+
   // Read data until either the connection is closed or the idle timeout is reached
   unsigned long lastRead = millis();
   while (www.connected() && (millis() - lastRead < IDLE_TIMEOUT_MS)) {
     while (www.available()) {
       char c = www.read();
       Serial.print(c);
+      if ( c == '{' ){
+        startRead = true;
+      }
+      else if ( startRead ){
+        if ( c != '}' ){
+          confNum[stringPos] = c;
+          stringPos++;
+        }
+        else {
+          startRead = false;
+        }
+      }
+
       lastRead = millis();
     }
   }
   www.close();
   Serial.println();
+  Serial.print("Confirmation Number = ");
+  Serial.println(confNum);
   Serial.println(F("-------------------------------------"));
   
   // You need to make sure to clean up after yourself or the CC3000 can freak out
   // the next time your try to connect ...
-  Serial.println(F("\n\nDisconnecting"));
-  cc3000.disconnect();
+  /*Serial.println(F("\n\nDisconnecting"));*/
+  /*cc3000.disconnect();*/
 
   // Once complete request confirmation from the user
   requestConfirmation();
@@ -261,7 +303,9 @@ void httpRequest(){
  * TODO: Perform second HTTP request to signal confirmation was made
  */
 void requestConfirmation(){
-  boolean alertUser = true;
+  bool alertUser = true;
+  bool startRead = false;
+  String newResponse;
   buttonEngaged = false;
 
   // While waiting for the user to click the button to confirm flash Yellow light to notify
@@ -280,6 +324,56 @@ void requestConfirmation(){
     }
 
     if( digitalRead( buttonPin ) == LOW && !buttonEngaged ){
+
+      Adafruit_CC3000_Client www = cc3000.connectTCP(ip, 3000);
+      if (www.connected()) {
+        www.fastrprint(F("GET /v1/orders/confirm/"));
+        www.fastrprint( confNum );
+        www.fastrprint(F(" HTTP/1.1\r\n"));
+        www.fastrprint(F("Host: starsdontcare.com:3000\r\n"));
+        www.fastrprint(F("User-Agent: ArduinoWiFi/1.1\r\n"));
+        www.println();
+      } else {
+        Serial.println(F("Connection failed"));    
+        errorHandling();
+        return;
+      }
+
+      // Read data until either the connection is closed or the idle timeout is reached
+      unsigned long lastRead = millis();
+      int stringPos = 0;
+      memset( &response, 0, 32 );
+
+      while (www.connected() && (millis() - lastRead < IDLE_TIMEOUT_MS)) {
+        while (www.available()) {
+          char c = www.read();
+          Serial.print(c);
+          newResponse += c;
+
+          if ( c == '{' && !startRead ){
+            startRead = true;
+          }
+          else if ( startRead ){
+            if ( c != '}' ){
+              Serial.print(c);
+              response[stringPos] = c;
+              stringPos++;
+            }
+            else {
+              startRead = false;
+            }
+          }
+
+          lastRead = millis();
+        }
+      }
+      www.close();
+      Serial.println();
+      Serial.println(F("-------------------------------------"));
+      Serial.println( response );
+
+      Serial.println(newResponse);
+
       buttonEngaged = true;
       alertUser = false;
       digitalWrite( orderInitLight, LOW );
@@ -294,9 +388,11 @@ void requestConfirmation(){
 
 
 void trackOrder(){
-  boolean tracking = true;
-  long interval = 20;
-  long statusMillis = 0;
+  bool tracking = true;
+  bool startRead = false;
+  char response[32];
+  long interval = 4000;
+  long startMillis = millis();
   int currentState = 0;
   int currentLight = state1;
   int clickCount = 0;
@@ -307,42 +403,80 @@ void trackOrder(){
   while( tracking ){
     unsigned long currentMillis = millis();
 
-    if( statusMillis >= interval ) {
-      Serial.println("Increase State - ");
-      currentState++;
-      Serial.println(currentState);
+    if( currentMillis - startMillis >= interval ) {
+      int stringPos = 0;
+      memset( &response, 0, 32 );
 
-      switch( currentState ){
+      Adafruit_CC3000_Client www = cc3000.connectTCP(ip, 3000);
+      if (www.connected()) {
+        www.fastrprint(F("GET /v1/orders/status/"));
+        www.fastrprint( confNum );
+        www.fastrprint(F(" HTTP/1.1\r\n"));
+        www.fastrprint(F("Host: starsdontcare.com:3000\r\n"));
+        www.fastrprint(F("User-Agent: ArduinoWiFi/1.1\r\n"));
+        www.println();
+      } else {
+        Serial.println(F("Connection failed"));    
+        errorHandling();
+        return;
+      }
+
+      // Read data until either the connection is closed or the idle timeout is reached
+      unsigned long lastRead = millis();
+
+      while (www.connected() && (millis() - lastRead < IDLE_TIMEOUT_MS)) {
+        while (www.available()) {
+          char c = www.read();
+
+          if ( c == '{' && !startRead ){
+            startRead = true;
+          }
+          else if ( startRead ){
+            if ( c != '}' ){
+              Serial.print(c);
+              response[stringPos] = c;
+              stringPos++;
+            }
+            else {
+              startRead = false;
+            }
+          }
+
+          lastRead = millis();
+        }
+      }
+      www.close();
+      Serial.println();
+      Serial.println(F("-------------------------------------"));
+      int intResponse = atoi(response);
+      Serial.print("New response ========== ");
+      Serial.println(intResponse);
+
+
+      switch( intResponse ){
         case 0:
-          Serial.println("Case 0");
           break;
         case 1:
-          Serial.println("Case 1");
           digitalWrite(state1, HIGH);
           currentLight = state2;
           break;
         case 2:
-          Serial.println("Case 2");
           digitalWrite(state2, HIGH);
           currentLight = state3;
           break;
         case 3:
-          Serial.println("Case 3");
           digitalWrite(state3, HIGH);
           currentLight = state4;
           break;
         case 4:
-          Serial.println("Case 4");
           digitalWrite(state4, HIGH);
           currentLight = state5;
           break;
         case 5:
-          Serial.println("Case 5");
           digitalWrite(state5, HIGH);
           currentLight = 0;
           break;
         case 6:
-          Serial.println("Case 6");
           tracking = false;
           break;
         default:
@@ -351,13 +485,11 @@ void trackOrder(){
           break;
       }
 
-      Serial.println(currentLight);
-      statusMillis = 0;
+      startMillis = millis();
     }
 
     if( currentMillis - previousMillis > alertInterval ){
       previousMillis = currentMillis;
-      statusMillis++;
 
       if( ledState == LOW)
         ledState = HIGH;
@@ -365,30 +497,6 @@ void trackOrder(){
         ledState = LOW;
 
       digitalWrite( currentLight, ledState );
-    }
-
-    if( digitalRead( buttonPin ) == LOW && !buttonEngaged ){
-      Serial.print("Button Clicked = ");
-      buttonEngaged = true;
-      clickCount++;
-      Serial.println(clickCount);
-    }
-
-    if( digitalRead( buttonPin ) == HIGH && !buttonEngaged ){
-      Serial.println("Button Reset");
-      buttonEngaged = false;
-    }
-
-    if( clickCount == 4 ){
-      tracking = false;
-      Serial.println("Break Tracking Clicked");
-      
-      digitalWrite( state1, LOW );
-      digitalWrite( state2, LOW );
-      digitalWrite( state3, LOW );
-      digitalWrite( state4, LOW );
-      digitalWrite( state5, LOW );
-      digitalWrite( confLight, LOW );
     }
   }
   resetParams();
@@ -448,32 +556,32 @@ void errorHandling(){
  */
 void listSSIDResults(void)
 {
-  uint8_t valid, rssi, sec, index;
-  char ssidname[33]; 
+  /*uint8_t valid, rssi, sec, index;*/
+  /*char ssidname[33]; */
 
-  index = cc3000.startSSIDscan();
+  /*index = cc3000.startSSIDscan();*/
 
-  Serial.print(F("Networks found: "));
-  Serial.println(index);
-  Serial.println(F("================================================"));
+  /*Serial.print(F("Networks found: "));*/
+  /*Serial.println(index);*/
+  /*Serial.println(F("================================================"));*/
 
-  while (index) {
-    index--;
+  /*while (index) {*/
+    /*index--;*/
 
-    valid = cc3000.getNextSSID(&rssi, &sec, ssidname);
+    /*valid = cc3000.getNextSSID(&rssi, &sec, ssidname);*/
     
-    Serial.print(F("SSID Name    : ")); 
-    Serial.print(ssidname);
-    Serial.println();
-    Serial.print(F("RSSI         : "));
-    Serial.println(rssi);
-    Serial.print(F("Security Mode: "));
-    Serial.println(sec);
-    Serial.println();
-  }
-  Serial.println(F("================================================"));
+    /*Serial.print(F("SSID Name    : ")); */
+    /*Serial.print(ssidname);*/
+    /*Serial.println();*/
+    /*Serial.print(F("RSSI         : "));*/
+    /*Serial.println(rssi);*/
+    /*Serial.print(F("Security Mode: "));*/
+    /*Serial.println(sec);*/
+    /*Serial.println();*/
+  /*}*/
+  /*Serial.println(F("================================================"));*/
 
-  cc3000.stopSSIDscan();
+  /*cc3000.stopSSIDscan();*/
 }
 
 
@@ -482,26 +590,26 @@ void listSSIDResults(void)
  */
 bool displayConnectionDetails(void)
 {
-  uint32_t ipAddress, netmask, gateway, dhcpserv, dnsserv;
+  /*uint32_t ipAddress, netmask, gateway, dhcpserv, dnsserv;*/
   
-  if(!cc3000.getIPAddress(&ipAddress, &netmask, &gateway, &dhcpserv, &dnsserv))
-  {
-    Serial.println(F("Unable to retrieve the IP Address!\r\n"));
-    return false;
-  }
-  else
-  {
-    Serial.print(F("\nIP Addr: ")); 
-    cc3000.printIPdotsRev(ipAddress);
-    Serial.println();
-    Serial.print(F("\nNetmask: ")); cc3000.printIPdotsRev(netmask);
-    Serial.println();
-    Serial.print(F("\nGateway: ")); cc3000.printIPdotsRev(gateway);
-    Serial.println();
-    Serial.print(F("\nDHCPsrv: ")); cc3000.printIPdotsRev(dhcpserv);
-    Serial.println();
-    Serial.print(F("\nDNSserv: ")); cc3000.printIPdotsRev(dnsserv);
-    Serial.println();
-    return true;
-  }
+  /*if(!cc3000.getIPAddress(&ipAddress, &netmask, &gateway, &dhcpserv, &dnsserv))*/
+  /*{*/
+    /*[>Serial.println(F("Unable to retrieve the IP Address!\r\n"));<]*/
+    /*return false;*/
+  /*}*/
+  /*else*/
+  /*{*/
+    /*Serial.print(F("\nIP Addr: ")); */
+    /*cc3000.printIPdotsRev(ipAddress);*/
+    /*Serial.println();*/
+    /*Serial.print(F("\nNetmask: ")); cc3000.printIPdotsRev(netmask);*/
+    /*Serial.println();*/
+    /*Serial.print(F("\nGateway: ")); cc3000.printIPdotsRev(gateway);*/
+    /*Serial.println();*/
+    /*Serial.print(F("\nDHCPsrv: ")); cc3000.printIPdotsRev(dhcpserv);*/
+    /*Serial.println();*/
+    /*Serial.print(F("\nDNSserv: ")); cc3000.printIPdotsRev(dnsserv);*/
+    /*Serial.println();*/
+    /*return true;*/
+  /*}*/
 }
