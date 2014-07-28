@@ -25,16 +25,14 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ
                                          SPI_CLOCK_DIVIDER);
 
 // Wireless Network
-/*#define WLAN_SSID        "CPB-BDR-Guest"           // cannot be longer than 32 characters!*/
-/*#define WLAN_PASS        "BDRCO6450"*/
-#define WLAN_SSID        "arduinoLine"           // cannot be longer than 32 characters!
-#define WLAN_PASS        "testtest"
+#define WLAN_SSID        "CPB-BDR-Guest"           // cannot be longer than 32 characters!*/
+#define WLAN_PASS        "BDRCO6450"*/
 // Security can be WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA or WLAN_SEC_WPA2
 #define WLAN_SECURITY    WLAN_SEC_WPA2
 // Amount of time to wait with no data received before closing the connection
 #define IDLE_TIMEOUT_MS  1000
 // Define the HOST and PAGE location
-#define HOST             "starsdontcare.com"
+#define HOST             "104.131.136.115"
 // Device Information
 #define deviceName       "Pizza%20Button"
 // Chars for storing returned values
@@ -154,8 +152,8 @@ void newOrder(){
   digitalWrite(orderInitLight, HIGH);
 
   // Print HOST IP Address
-  cc3000.printIPdotsRev(ip);
-  Serial.println(ip);
+  // cc3000.printIPdotsRev(ip);
+  // Serial.println(ip);
   // Perform HTTP Request
   memset( &confNum, 0, 32 );
   httpRequest( true, strcat("POST /v1/orders/new/", deviceName) );
@@ -331,16 +329,17 @@ void wifiConnect(){
   // Clear anything stored in ip
   ip = 0;
 
+  // TODO - Use if HOST is not an IP Address
   // Try looking up the website's IP address
-  Serial.print(HOST); 
-  Serial.print(F(" = "));
-  while (ip == 0) {
-    if (! cc3000.getHostByName(HOST, &ip)) {
-      Serial.println(F("Couldn't resolve!"));
-      errorHandling();
-    }
-    delay(500);
-  }
+  /*Serial.print(HOST); */
+  /*Serial.print(F(" = "));*/
+  /*while (ip == 0) {*/
+    /*if (! cc3000.getHostByName(HOST, &ip)) {*/
+      /*Serial.println(F("Couldn't resolve!"));*/
+      /*errorHandling();*/
+    /*}*/
+    /*delay(500);*/
+  /*}*/
 }
 
 /*
@@ -356,7 +355,8 @@ void httpRequest( bool newOrder, char request[64] )
   Serial.println(request);
   memset( &response, 0, 32 );
 
-  Adafruit_CC3000_Client www = cc3000.connectTCP(ip, 3000);
+  // Establish HTTP Request - cc3000.connectTCP(ip, 80) is default is not using IP as HOST
+  Adafruit_CC3000_Client www = cc3000.connectTCP(0x68838873, 3000);
   if (www.connected()) {
     www.fastrprint(request);
     www.fastrprint(F(" HTTP/1.1\r\n"));
