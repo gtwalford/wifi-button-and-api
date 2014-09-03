@@ -25,16 +25,16 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ
                                          SPI_CLOCK_DIVIDER);
 
 // Wireless Network
-#define WLAN_SSID        "CPB-BDR-Guest"           // cannot be longer than 32 characters!*/
-#define WLAN_PASS        "BDRCO6450"*/
+#define WLAN_SSID        ""           // cannot be longer than 32 characters!*/
+#define WLAN_PASS        ""
 // Security can be WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA or WLAN_SEC_WPA2
 #define WLAN_SECURITY    WLAN_SEC_WPA2
 // Amount of time to wait with no data received before closing the connection
 #define IDLE_TIMEOUT_MS  1000
 // Define the HOST and PAGE location
-#define HOST             "104.131.136.115"
+#define HOST             ""
 // Device Information
-#define deviceName       "Pizza%20Button"
+#define deviceName       "testDevice"
 // Chars for storing returned values
 char confNum[32];
 char response[32];
@@ -48,11 +48,11 @@ int buttonState; // Used to store the button state in the loop
 boolean buttonEngaged = true; // To prevent click events from occurring continually if button held down
 
 // Lights
-const int orderInitLight = A1; // Yellow light for when order is initiated
-const int confLight = A3; // Blue light to signal order placed
+const int initLight = A1; // Yellow light for when Request is initiated
+const int confLight = A3; // Blue light to signal Request placed
 const int errorLight = A4; // Red to notify Error
 
-// Red lights for Order Status
+// Red lights for Request Status
 const int state1 = 3;
 const int state2 = 4; 
 const int state3 = 5;
@@ -78,7 +78,7 @@ void setup()
   Serial.println("--------------------------");
 
   pinMode(buttonPin, INPUT);
-  pinMode(orderInitLight, OUTPUT);
+  pinMode(initLight, OUTPUT);
   pinMode(confLight, OUTPUT);
   pinMode(errorLight, OUTPUT);
   pinMode(state1, OUTPUT);
@@ -87,7 +87,7 @@ void setup()
   pinMode(state4, OUTPUT);
   pinMode(state5, OUTPUT);
 
-  digitalWrite(orderInitLight, LOW);
+  digitalWrite(initLight, LOW);
   digitalWrite(confLight, LOW);
   digitalWrite(errorLight, LOW);
   digitalWrite(state1, LOW);
@@ -125,10 +125,10 @@ void loop(){
     // Check Wifi and establish new connection if not connected
     if( cc3000.checkConnected() == 0 ){
       wifiConnect();
-      newOrder();
+      newRequest();
     }
     else {
-      newOrder();
+      newRequest();
     }
   }
 
@@ -141,22 +141,23 @@ void loop(){
 
 
 /*
- * newOrder()
+ * newRequest()
  *
  * Make Http request and print returned page
  */
-void newOrder(){
+void newRequest(){
+  char newAddr[] = "POST /v1/request/new/";
 
-  Serial.println("Make new order");
+  Serial.println("Make new Request");
   // Signal that HTTP Request is being made
-  digitalWrite(orderInitLight, HIGH);
+  digitalWrite(initLight, HIGH);
 
   // Print HOST IP Address
   // cc3000.printIPdotsRev(ip);
   // Serial.println(ip);
   // Perform HTTP Request
   memset( &confNum, 0, 32 );
-  httpRequest( true, strcat("POST /v1/orders/new/", deviceName) );
+  httpRequest( true, strcat(newAddr, deviceName) );
 
   Serial.println();
   Serial.print("Confirmation Number = ");
@@ -178,7 +179,7 @@ void newOrder(){
 void requestConfirmation(){
   bool alertUser = true;
   buttonEngaged = false;
-  char confAddr[] = "GET /v1/orders/confirm/";
+  char confAddr[] = "GET /v1/request/confirm/";
 
   // While waiting for the user to click the button to confirm flash Yellow light to notify
   while( alertUser ){
@@ -192,7 +193,7 @@ void requestConfirmation(){
       else
         ledState = LOW;
 
-      digitalWrite( orderInitLight, ledState );
+      digitalWrite( initLight, ledState );
     }
 
     if( digitalRead( buttonPin ) == LOW && !buttonEngaged ){
@@ -200,17 +201,21 @@ void requestConfirmation(){
 
       buttonEngaged = true;
       alertUser = false;
-      digitalWrite( orderInitLight, LOW );
+      digitalWrite( initLight, LOW );
       digitalWrite( confLight, HIGH );
 
       Serial.println("Confirmation Clicked");
-      trackOrder();
+      trackRequest();
     }
   }
 }
 
 
-void trackOrder(){
+/*
+ * trackRequest()
+ *
+ */
+void trackRequest(){
   bool tracking = true;
   long interval = 4000;
   long startMillis = millis();
@@ -223,7 +228,8 @@ void trackOrder(){
 
   while( tracking ){
     unsigned long currentMillis = millis();
-    char statusAddr[] = "GET /v1/orders/status/";
+    // Reset status address with each loop to avoid stacking the confNum
+    char statusAddr[] = "GET /v1/request/status/";
 
     if( currentMillis - startMillis >= interval ) {
       httpRequest( false, strcat( statusAddr, confNum ) );
@@ -289,7 +295,7 @@ void trackOrder(){
  */
 void wifiConnect(){
   // Turn on the Yellow/Blue/Red lights to signal attempting to connect
-  digitalWrite(orderInitLight, HIGH);
+  digitalWrite(initLight, HIGH);
   digitalWrite(confLight, HIGH);
   digitalWrite(errorLight, HIGH);
 
@@ -303,7 +309,7 @@ void wifiConnect(){
   }
   
   // Connect to wireless network
-  Serial.print(F("\nAttempting to connect to "));
+  /*Serial.print(F("\nAttempting to connect to "));*/
   Serial.println(WLAN_SSID);
   if (!cc3000.connectToAP(WLAN_SSID, WLAN_PASS, WLAN_SECURITY)) {
     Serial.println(F("Failed!"));
@@ -322,7 +328,7 @@ void wifiConnect(){
   }  
 
   // Turn off lights when connection complete
-  digitalWrite(orderInitLight, LOW);
+  digitalWrite(initLight, LOW);
   digitalWrite(confLight, LOW);
   digitalWrite(errorLight, LOW);
 
@@ -343,10 +349,14 @@ void wifiConnect(){
 }
 
 /*
- * httpRequest( bool newOrder, String request )
+ * httpRequest( bool newRequest, String request )
+ *
+ * Use to make http request
+ * newRequest to determine if return should be stored in confNum or response
+ * request should contain http protocol and file path for request - "GET /v1/Requests/status"
  *
  */
-void httpRequest( bool newOrder, char request[64] )
+void httpRequest( bool newRequest, char request[64] )
 {
   bool startRead = false;
   int stringPos = 0;
@@ -379,11 +389,11 @@ void httpRequest( bool newOrder, char request[64] )
         startRead = true;
       }
       else if ( startRead ){
-        if ( c != '}' && newOrder ){
+        if ( c != '}' && newRequest ){
           confNum[stringPos] = c;
           stringPos++;
         }
-        else if ( c != '}' && !newOrder ){
+        else if ( c != '}' && !newRequest ){
           response[stringPos] = c;
           stringPos++;
         }
@@ -449,7 +459,7 @@ void resetParams()
   digitalWrite( state3, LOW );
   digitalWrite( state4, LOW );
   digitalWrite( state5, LOW );
-  digitalWrite( orderInitLight, LOW );
+  digitalWrite( initLight, LOW );
   digitalWrite( confLight, LOW );
   digitalWrite( errorLight, LOW );
 
