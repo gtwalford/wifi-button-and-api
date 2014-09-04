@@ -146,7 +146,7 @@ void loop(){
  * Make Http request and print returned page
  */
 void newRequest(){
-  char newAddr[] = "POST /v1/request/new/";
+  char newAddr[] = "POST /v1/orders/new/";
 
   Serial.println("Make new Request");
   // Signal that HTTP Request is being made
@@ -179,7 +179,7 @@ void newRequest(){
 void requestConfirmation(){
   bool alertUser = true;
   buttonEngaged = false;
-  char confAddr[] = "GET /v1/request/confirm/";
+  char confAddr[] = "GET /v1/orders/confirm/";
 
   // While waiting for the user to click the button to confirm flash Yellow light to notify
   while( alertUser ){
@@ -229,7 +229,7 @@ void trackRequest(){
   while( tracking ){
     unsigned long currentMillis = millis();
     // Reset status address with each loop to avoid stacking the confNum
-    char statusAddr[] = "GET /v1/request/status/";
+    char statusAddr[] = "GET /v1/orders/status/";
 
     if( currentMillis - startMillis >= interval ) {
       httpRequest( false, strcat( statusAddr, confNum ) );
@@ -353,7 +353,7 @@ void wifiConnect(){
  *
  * Use to make http request
  * newRequest to determine if return should be stored in confNum or response
- * request should contain http protocol and file path for request - "GET /v1/Requests/status"
+ * request should contain http protocol and file path for request - "GET /v1/orders/status"
  *
  */
 void httpRequest( bool newRequest, char request[64] )
